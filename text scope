@@ -1,0 +1,171 @@
+Contract & Scope Risk Agent: Design Draft
+v1
+Gate: GI Solution Assurance | Status: first draft for leadership review | Format: hackathon
+build
+1. Problem
+Many delivery problems start in the paperwork. Statements of Work (SOWs) are vague,
+assumptions are never written down, and contract clauses commit the team to
+obligations nobody planned for. The team usually finds out around 50% into the project,
+through scope disputes, unplanned effort and pricing gaps. By then, fixing it means
+change requests, margin erosion and strained client relationships.
+Today, catching these issues depends on a delivery manager and legal reading long
+documents under time pressure. It is slow, inconsistent, and overloads both groups.
+Core need: an agent that reads the SOW and supporting documents before approval and
+returns a severity-ranked list of gaps, with a risk score, so issues are fixed before signing,
+not after project start.
+2. Goals and non-goals
+Goals
+Identify what we are committing to deliver, including obligations buried in small print.
+Check whether assumptions are written, and flag the ones that are missing.
+Judge whether scope is vague or broader than it looks.
+Surface commercial rights and risks: penalties, liability, payment terms, changerequest mechanism.
+Detect legal conflicts between documents and deviations from internal policy.
+Check resource numbers (roles, headcount, effort) against the scope.
+Rank every finding by severity and give an overall risk score with a sign / negotiate /
+escalate recommendation.
+Reduce the review burden on legal and delivery managers.
+Non-goals (for the hackathon)
+Replacing legal review or giving legal advice. The agent supports a human decision.
+Contract & Scope Risk Agent: Design Draft v1
+Page 1 of 6
+Negotiating with the client or auto-editing contracts.
+Modelling client-side policies (hard to obtain, and not required to assess our own
+risk).
+3. Users
+Delivery manager (primary): uploads the SOW and supporting documents, gets the
+report, and fixes most issues directly.
+Legal: receives only Critical and legal-conflict items.
+Commercial and finance leader: views payment, penalty and exposure findings.
+TPM: views scope, assumption and resourcing findings.
+4. Tech stack
+LLM: Claude, using structured (JSON) output so every finding follows a fixed schema.
+Use a stronger model for analysis and ranking, and a lighter one for parsing and
+extraction if cost or latency matters.
+Orchestration: plain Python to start; LangGraph if a visible agent graph is useful for
+the demo.
+Document parsing: PyMuPDF and python-docx; Docling if PDFs or tables are messy.
+Schema and validation: Pydantic models for findings, rules and the report.
+Retrieval: policy rules are few, so pass the relevant ones directly in the prompt. Use a
+lightweight vector index (Chroma or FAISS) for the past-issues library.
+UI: Streamlit (upload, progress view, report, export).
+Export: DOCX, PDF or CSV of the risk register.
+5. Architecture (first draft)
+Flow: upload documents, parse, run specialist analysts, retrieve past lessons, verify, rank
+and score, then render the report.
+Components
+1. Document Parser. Converts SOW, contract and proposal into clauses, tables and
+metadata (parties, term, value, dates, payment terms). Keeps document name and
+clause location so every finding can cite its source.
+Contract & Scope Risk Agent: Design Draft v1
+Page 2 of 6
+2. Scope, Assumption and Resource Analyst. Looks for vague verbs and quantifiers,
+missing acceptance criteria, no out-of-scope list, open-ended effort, missing or
+unrealistic assumptions, and resource numbers that do not match the scope.
+Compares the proposal against the SOW to catch promises the SOW does not bound.
+3. Obligation, Commercial and Legal Analyst. Extracts every binding obligation (shall,
+must, at our cost), annexure terms, SLAs and penalties, liability and indemnity, autorenewal, IP, data and audit terms, payment and milestone alignment, and the changerequest mechanism. Flags contradictions between documents and precedence
+issues. Checks clauses against internal legal and general policy.
+4. Historical Lessons Agent. For each candidate finding, retrieves similar clause
+patterns from past contracts and the delivery issues they caused, so severity is tied
+to real consequences.
+5. Ranker and Critic. Verifies that each quoted clause actually exists in the source,
+removes duplicates, checks severity is justified, computes scores, and writes the final
+report. Findings that fail verification are dropped or re-run.
+Orchestration notes
+Analysts 2 and 3 can share one prompt template with different checklists.
+Gaps the agent cannot resolve become a "questions to resolve before signing" list
+instead of guesses.
+Human in the loop: the delivery manager can accept, dismiss or escalate each finding.
+Finding schema (draft fields): id, category, severity, clause quote, document and location,
+why it is risky, suggested fix or clarifying question, owner (delivery, legal, commercial,
+finance, TPM), policy rule reference, past-issue reference, confidence.
+Severity and scoring
+Tiers: Critical, High, Medium, Low.
+Severity is derived from impact (financial, delivery, legal, reversibility) and likelihood,
+with the weights written down so the score is explainable.
+Overall Contract Risk Score out of 100, with sub-scores for Obligations, Assumptions,
+Scope, Commercial, Legal and Resourcing.
+Recommendation: Ready to sign, Negotiate first, or Escalate to legal.
+Escalation routing: only Critical and legal-conflict findings go to legal. Everything else
+stays with the delivery manager. This is how the burden on legal is reduced.
+Contract & Scope Risk Agent: Design Draft v1
+Page 3 of 6
+6. Data layer
+Inputs per review
+SOW (required).
+Contract and proposal (supporting; the proposal enables scope-drift detection).
+Optional free-text notes from the delivery manager.
+Reference data
+Internal policy (legal and general). Converted into structured rules: topic, standard
+position, acceptable fallback, severity weight, owner. Target 20 to 40 rules for the first
+version.
+Lessons library (past contracts and delivery issues). Each entry: clause pattern,
+what went wrong, impact (cost, delay, dispute), how it could have been caught. Start
+with 10 to 20 curated entries.
+Storage
+Hackathon: files and a local vector index; reports stored as JSON plus an exported
+document.
+Later: a document store with access control, audit log of each review, and versioning
+of policy rules.
+Data handling
+Contracts are sensitive. Remove client names for demo data, keep processing within
+approved environments, and log what was sent to the model.
+7. Evaluation
+Test set
+5 to 10 SOWs and contracts (real with names removed, or synthetic) with planted
+risks: vague scope, buried uncapped indemnity, conflicting payment terms, missing
+assumption, unrealistic resourcing.
+An answer key listing each known issue, its clause, and its expected severity.
+Metrics
+Recall: share of known issues the agent finds (primary metric).
+Precision: share of reported findings that are real and useful (false-positive rate).
+Contract & Scope Risk Agent: Design Draft v1
+Page 4 of 6
+Severity agreement: how often the agent's severity matches the reviewers' (within
+one tier).
+Citation accuracy: share of findings whose quoted clause exists and supports the
+claim (target near 100%).
+Time saved: manual review time versus agent time per document.
+Burden reduction: share of findings resolved by the delivery manager without legal
+involvement.
+Reviewer trust: a short rating from a delivery manager and a legal reviewer on
+usefulness and clarity.
+Method
+Run the agent on the test set, compare to the answer key, and report per-category
+results.
+Have a legal or delivery reviewer grade a sample of findings blind.
+Back-test on a past contract that caused a delivery issue: would the agent have
+flagged it?
+8. Risks to the build
+Missed or hallucinated clauses: mitigated by the critic step and mandatory quotes.
+Over-flagging, which causes alert fatigue: mitigated by severity thresholds and deduplication.
+Scanned or badly formatted PDFs: mitigated by a parsing fallback and sample-file
+checks early.
+Policy that is hard to codify: mitigated by starting with the highest-impact rules only.
+Confidentiality of contract data: mitigated by approved environment and anonymised
+demo data.
+9. Questions to ask the leader before we start building
+Scope and success
+1. What does success look like for this challenge: catching more issues, saving review
+time, or fewer disputes later? Which one is judged first?
+2. Which contract types are in scope (new SOWs only, or also change requests,
+renewals, MSAs)?
+Contract & Scope Risk Agent: Design Draft v1
+Page 5 of 6
+3. Is the output advisory only, or does it feed an approval workflow or gate?
+Data and access 4. Can we get 5 to 10 real or anonymised SOWs and contracts, and who
+approves their use? 5. Is the internal policy documented in a usable form, and who owns it
+and can validate our rule extraction? 6. Is there a record of past contract-driven delivery
+issues, and in what form (tickets, post-mortems, dispute logs)? 7. Do we have access to
+historical pricing and effort data to sanity-check resource numbers?
+Risk and governance 8. Are we allowed to send contract text to an external model API, or
+must it stay in an approved environment? Are there client confidentiality restrictions? 9.
+Where is the line between what a delivery manager can decide and what must go to legal?
+Can we define the escalation thresholds? 10. How should the risk score be used:
+informational, or tied to approval limits?
+People and validation 11. Can a legal reviewer and a delivery manager give us time to
+validate findings and the severity ranking? 12. Who owns the tool after the hackathon, and
+who is the first pilot user group? 13. What are the judging criteria and demo format, so we
+can design the demo around them?
+Contract & Scope Risk Agent: Design Draft v1
+Page 6 of 6
